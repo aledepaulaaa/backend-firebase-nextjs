@@ -14,10 +14,10 @@ export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse
 ) {
-    if (req.method !== 'POST') {
-        res.setHeader('Allow', ['POST']);
-        return res.status(405).end(`Method ${req.method} Not Allowed`);
-    }
+    // if (req.method !== 'POST') {
+    //     res.setHeader('Allow', ['POST']);
+    //     return res.status(405).end(`Method ${req.method} Not Allowed`);
+    // }
 
     const { fcmToken, email } = req.body;
 
