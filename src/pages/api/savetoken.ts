@@ -14,19 +14,19 @@ export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse
 ) {
-    // if (req.method !== 'POST') {
-    //     res.setHeader('Allow', ['POST']);
-    //     return res.status(405).end(`Method ${req.method} Not Allowed`);
-    // }
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', ['POST']);
+        return res.status(405).end(`Method ${req.method} Not Allowed`);
+    }
 
     const { fcmToken, email } = req.body;
 
     console.log(`[/api/savetoken] Recebido: token=${fcmToken?.substring(0, 10)}..., email=${email}`);
 
-    // if (!isValidInput(fcmToken, email)) {
-    //     console.log("[/api/savetoken] Input inválido (token ou email).");
-    //     return res.status(400).json({ error: "Token FCM ou Email inválido.", registered: false });
-    // }
+    if (!isValidInput(fcmToken, email)) {
+        console.log("[/api/savetoken] Input inválido (token ou email).");
+        return res.status(400).json({ error: "Token FCM ou Email inválido.", registered: false });
+    }
 
     // Usa o email como ID do documento para fácil consulta
     const userDocRef = firestoreDb.collection('token-usuarios').doc(email);
