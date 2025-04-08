@@ -16,11 +16,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Executar o middleware CORS
     await runCorsMiddleware(req, res)
 
-    // Log para depuração
-    console.log("[/api/savetoken] Método:", req.method)
-    console.log("[/api/savetoken] Headers:", JSON.stringify(req.headers))
-    console.log("[/api/savetoken] Body:", JSON.stringify(req.body))
-
     if (req.method !== 'POST') {
         res.setHeader('Allow', ['POST'])
         return res.status(405).end(`Method ${req.method} Not Allowed`)
