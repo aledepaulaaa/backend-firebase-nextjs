@@ -64,10 +64,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 await userDocRef.update({
                     fcmTokens: admin.firestore.FieldValue.arrayUnion(fcmToken)
                 })
-                // Adiciona o novo token ao array existente
-                await userDocRef.update({
-                    fcmTokens: admin.firestore.FieldValue.arrayUnion(fcmToken)
-                })
                 message = "Novo token adicionado para este email."
                 console.log(`[/api/savetoken] Novo token adicionado para ${email}.`)
             }
