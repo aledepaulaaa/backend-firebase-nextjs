@@ -1,208 +1,117 @@
-// src/pages/api/traccar-event.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { firestoreDb, messaging } from '../../lib/firebaseAdmin'
-import * as admin from 'firebase-admin'
+import { firestoreDb } from '@/lib/firebaseAdmin'
+import admin from 'firebase-admin'
 import { runCorsMiddleware } from '@/lib/cors'
 
 interface EventNotificationPayload {
     deviceId: string
-    deviceName: string
+    deviceName?: string
     eventType: string
     eventTime: string
     attributes?: Record<string, any>
 }
 
-export default async function handler(
-    req: NextApiRequest,
-    res: NextApiResponse
-) {
-    // Executar o middleware CORS
+interface TraccarEventRequest {
+    email: string
+    event: EventNotificationPayload
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     await runCorsMiddleware(req, res)
 
     if (req.method !== 'POST') {
         res.setHeader('Allow', ['POST'])
-        return res.status(405).end(`Method ${req.method} Not Allowed`)
+        return res.status(405).json({ error: `Method ${req.method} Not Allowed` })
     }
 
-    const { email, event } = req.body as {
-        email?: string
-        event?: EventNotificationPayload
-    }
+    const { email, event } = req.body as TraccarEventRequest
 
-    // Validar parâmetros
-    if (!email || typeof email !== 'string') {
-        return res.status(400).json({ error: "Email inválido ou não fornecido." })
+    // Validações básicas
+    if (!email) {
+        return res.status(400).json({ error: 'Email é obrigatório.' })
     }
-
-    if (!event || typeof event !== 'object' || !event.deviceId || !event.eventType) {
-        return res.status(400).json({ error: "Dados do evento inválidos ou incompletos." })
+    if (!event || !event.deviceId || !event.eventType) {
+        return res.status(400).json({ error: 'Dados de evento inválidos.' })
     }
-
-    console.log(`[traccar-event] Processando evento ${event.eventType} para ${email}`)
 
     try {
-        // Buscar tokens do usuário
+        // Obter tokens registrados
         const userDocRef = firestoreDb.collection('token-usuarios').doc(email)
-        const docSnap = await userDocRef.get()
+        const userDoc = await userDocRef.get()
 
-        if (!docSnap.exists) {
-            return res.status(404).json({ error: `Nenhum token encontrado para o email ${email}.` })
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: `Nenhum registro de token para ${email}.` })
         }
 
-        const userTokens = docSnap.data()?.fcmTokens || []
-
-        if (userTokens.length === 0) {
-            return res.status(404).json({ error: `Nenhum token encontrado para o email ${email}.` })
+        const tokens: string[] = userDoc.data()?.fcmTokens?.map((t: any) => t.fcmToken) || []
+        if (tokens.length === 0) {
+            return res.status(404).json({ error: 'Nenhum token disponível para envio.' })
         }
 
-        // Criar título e corpo da notificação com base no tipo de evento
-        let title = 'Notificação'
-        let body = ''
+        // Helper para título e corpo
+        const makeNotification = (() => {
+            const base = event.deviceName || `Dispositivo ${event.deviceId}`
+            switch (event.eventType) {
+                case 'deviceOnline': return { title: 'Dispositivo Online', body: `${base} está online` }
+                case 'deviceOffline': return { title: 'Dispositivo Offline', body: `${base} está offline` }
+                case 'deviceMoving': return { title: 'Movimento Detectado', body: `${base} está se movendo` }
+                case 'deviceStopped': return { title: 'Dispositivo Parado', body: `${base} está parado` }
+                case 'ignitionOn': return { title: 'Ignição Ligada', body: `${base}: ignição ligada` }
+                case 'ignitionOff': return { title: 'Ignição Desligada', body: `${base}: ignição desligada` }
+                case 'geofenceEnter': return { title: 'Cerca Virtual', body: `${base} entrou em ${event.attributes?.geofenceName || ''}` }
+                case 'geofenceExit': return { title: 'Cerca Virtual', body: `${base} saiu de ${event.attributes?.geofenceName || ''}` }
+                case 'alarm': return { title: 'Alarme', body: `${base}: ${event.attributes?.alarm || 'Alarme ativado'}` }
+                default: return { title: 'Notificação', body: `${base}: ${event.eventType}` }
+            }
+        })()
 
-        const deviceName = event.deviceName || `Dispositivo ${event.deviceId}`
-
-        switch (event.eventType) {
-            case 'deviceOnline':
-                title = 'Dispositivo Online'
-                body = `${deviceName} está online`
-                break
-            case 'deviceOffline':
-                title = 'Dispositivo Offline'
-                body = `${deviceName} está offline`
-                break
-            case 'deviceMoving':
-                title = 'Dispositivo Movendo'
-                body = `${deviceName} está se movendo`
-                break
-            case 'deviceStopped':
-                title = 'Dispositivo Parado'
-                body = `${deviceName} está parado`
-                break
-            case 'ignitionOn':
-                title = 'Ignição Ligada'
-                body = `${deviceName}: Ignição ligada`
-                break
-            case 'ignitionOff':
-                title = 'Ignição Desligada'
-                body = `${deviceName}: Ignição desligada`
-                break
-            case 'geofenceEnter':
-                title = 'Cerca Virtual'
-                body = `${deviceName}: Entrou na cerca virtual ${event.attributes?.geofenceName || ''}`
-                break
-            case 'geofenceExit':
-                title = 'Cerca Virtual'
-                body = `${deviceName}: Saiu da cerca virtual ${event.attributes?.geofenceName || ''}`
-                break
-            case 'alarm':
-                title = 'Alarme'
-                body = `${deviceName}: ${event.attributes?.alarm || 'Alarme ativado'}`
-                break
-            default:
-                body = `${deviceName}: ${event.eventType}`
-        }
-
-        // Criar payload para FCM
+        // Payload FCM
         const message: admin.messaging.MulticastMessage = {
-            notification: {
-                title: title,
-                body: body
-            },
+            tokens,
+            notification: makeNotification,
             data: {
                 deviceId: event.deviceId,
                 eventType: event.eventType,
                 eventTime: event.eventTime,
                 url: `/device/${event.deviceId}`
             },
-            tokens: userTokens,
-            // Configurações para Android
             android: {
                 priority: 'high',
-                notification: {
-                    clickAction: 'FLUTTER_NOTIFICATION_CLICK',
-                    channelId: 'high_importance_channel',
-                    priority: 'high',
-                    defaultSound: true,
-                    defaultVibrateTimings: true
-                }
+                notification: { channelId: 'high_importance_channel', clickAction: 'FLUTTER_NOTIFICATION_CLICK' }
             },
-            // Configurações para Apple
-            apns: {
-                payload: {
-                    aps: {
-                        sound: 'default',
-                        badge: 1,
-                        contentAvailable: true
-                    }
-                },
-                headers: {
-                    'apns-priority': '10'
-                }
-            },
-            // Configurações para Web
+            apns: { payload: { aps: { sound: 'default', badge: 1 } }, headers: { 'apns-priority': '10' } },
             webpush: {
-                notification: {
-                    icon: '/icon-192x192.png',
-                    badge: '/icon-64x64.png',
-                    vibrate: [200, 100, 200],
-                    actions: [
-                        {
-                            action: 'view',
-                            title: 'Ver Detalhes'
-                        }
-                    ]
-                },
-                fcmOptions: {
-                    link: `/device/${event.deviceId}`
-                }
+                fcmOptions: { link: `/device/${event.deviceId}` },
+                notification: { icon: '/icon-192x192.png', badge: '/icon-64x64.png', vibrate: [200, 100, 200] }
             }
         }
 
-        // Enviar notificação
-        console.log(`[traccar-event] Enviando para ${userTokens.length} tokens...`)
-        const response = await messaging.sendEachForMulticast(message)
+        // Envio e tratamento de respostas
+        const batch = admin.messaging().sendEachForMulticast(message)
+        const response = await batch
 
-        // Verificar resultado
-        if (response.successCount > 0) {
-            console.log(`[traccar-event] Enviado com sucesso para ${response.successCount} de ${userTokens.length} tokens.`)
-
-            // Limpar tokens inválidos
-            const invalidTokens: string[] = []
-            response.responses.forEach((resp, idx) => {
-                if (!resp.success && (
-                    resp.error?.code === 'messaging/invalid-registration-token' ||
-                    resp.error?.code === 'messaging/registration-token-not-registered'
-                )) {
-                    invalidTokens.push(userTokens[idx])
-                }
-            })
-
-            // Remover tokens inválidos do Firestore
-            if (invalidTokens.length > 0) {
-                console.log(`[traccar-event] Removendo ${invalidTokens.length} tokens inválidos...`)
-                await userDocRef.update({
-                    fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens)
-                })
+        // Filtrar tokens inválidos
+        const invalid: string[] = []
+        response.responses.forEach((r, i) => {
+            if (!r.success && ['messaging/invalid-registration-token', 'messaging/registration-token-not-registered'].includes(r.error?.code || '')) {
+                invalid.push(tokens[i])
             }
-
-            return res.status(200).json({
-                success: true,
-                message: `Notificação enviada com sucesso para ${response.successCount} de ${userTokens.length} dispositivos.`,
-                invalidTokensRemoved: invalidTokens.length
-            })
-        } else {
-            console.error('[traccar-event] Falha ao enviar para todos os tokens.')
-            return res.status(500).json({
-                error: 'Falha ao enviar notificação para todos os tokens de destino.',
-                details: response.responses.map(r => r.error?.message || 'Unknown error')
-            })
-        }
-    } catch (error: any) {
-        console.error('[traccar-event] Erro ao processar:', error)
-        return res.status(500).json({
-            error: 'Erro interno ao processar notificação de evento.',
-            details: error.message
         })
+        if (invalid.length) {
+            await userDocRef.update({
+                fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalid.map(token => ({ fcmToken: token })))
+            })
+        }
+
+        return res.status(200).json({
+            success: true,
+            sent: response.successCount,
+            failed: response.failureCount,
+            invalidRemoved: invalid.length
+        })
+
+    } catch (err: any) {
+        console.error('[traccar-event] erro', err)
+        return res.status(500).json({ error: 'Erro interno ao processar evento.' })
     }
 }
-

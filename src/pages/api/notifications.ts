@@ -1,161 +1,71 @@
-// notifications.ts
 import { runCorsMiddleware } from '@/lib/cors'
 import { firestoreDb } from '@/lib/firebaseAdmin'
 import type { NextApiRequest, NextApiResponse } from 'next'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    const { method } = req
-
-    // Executar o middleware CORS
     await runCorsMiddleware(req, res)
-
-    switch (method) {
-        case 'GET':
-            return checkUserToken(req, res)
-        case 'POST':
-            return registerToken(req, res)
-        case 'DELETE':
-            return deleteToken(req, res)
+    switch (req.method) {
+        case 'GET': return checkUserToken(req, res)
+        case 'POST': return registerToken(req, res)
+        case 'DELETE': return deleteToken(req, res)
         default:
             res.setHeader('Allow', ['GET', 'POST', 'DELETE'])
-            res.status(405).end(`Method ${method} Not Allowed`)
+            return res.status(405).end(`Method ${req.method} Not Allowed`)
     }
 }
 
-// Verificar se um token existe para o usuário e dispositivo
 async function checkUserToken(req: NextApiRequest, res: NextApiResponse) {
-    try {
-        const { email, deviceId } = req.query
-
-        if (!email) {
-            return res.status(400).json({ error: 'Email é obrigatório' })
-        }
-
-        const userDocRef = firestoreDb.collection('token-usuarios').doc(email as string)
-        const userDoc = await userDocRef.get()
-
-        if (!userDoc.exists) {
-            return res.status(200).json({ hasValidToken: false })
-        }
-
-        const userData = userDoc.data()
-        const tokens = userData?.fcmTokens || []
-
-        // Se fornecido deviceId, verifica token específico para o dispositivo
-        if (deviceId) {
-            const deviceToken = tokens.find((t: any) => t.deviceId === deviceId)
-            return res.status(200).json({
-                hasValidToken: !!deviceToken,
-                token: deviceToken?.token || null
-            })
-        }
-
-        // Sem deviceId, retorna o primeiro token válido
-        return res.status(200).json({
-            hasValidToken: tokens.length > 0,
-            token: tokens.length > 0 ? tokens[0].token : null
-        })
-
-    } catch (error) {
-        console.error('Erro ao verificar token:', error)
-        return res.status(500).json({ error: 'Erro ao verificar token' })
+    const { email, deviceId } = req.query
+    if (!email) return res.status(400).json({ error: 'Email é obrigatório' })
+    const ref = firestoreDb.collection('token-usuarios').doc(email as string)
+    const doc = await ref.get()
+    if (!doc.exists) return res.status(200).json({ hasValidToken: false })
+    const tokens = doc.data()?.fcmTokens || []
+    if (deviceId) {
+        const dev = tokens.find((t: any) => t.deviceId === deviceId)
+        return res.status(200).json({ hasValidToken: !!dev, token: dev?.fcmToken })
     }
+    return res.status(200).json({ hasValidToken: tokens.length > 0, token: tokens[0]?.fcmToken })
 }
 
-// Registrar novo token
 async function registerToken(req: NextApiRequest, res: NextApiResponse) {
-    try {
-        const { fcmToken, email, deviceId = 'default' } = req.body
+    const { fcmToken, email, deviceId = 'default' } = req.body
+    if (!fcmToken || !email) return res.status(400).json({ error: 'Token e email são obrigatórios' })
 
-        console.log({ 
-            "Token ": fcmToken,
-            "Email ": email,
-            "DeviceId ": deviceId,
-        })
+    const ref = firestoreDb.collection('token-usuarios').doc(email)
+    const doc = await ref.get()
+    let tokens = doc.exists ? doc.data()?.fcmTokens || [] : []
 
-        if (!fcmToken || !email || !deviceId) {
-            return res.status(400).json({ error: 'Token e email e deviceId são obrigatórios' })
-        }
+    // Se token já existe igual, retorna sem atualizar
+    const existing = tokens.find((t: any) => t.deviceId === deviceId && t.fcmToken === fcmToken)
+    if (existing) return res.status(200).json({ success: true })
 
-        const userDocRef = firestoreDb.collection('token-usuarios').doc(email)
-        const userDoc = await userDocRef.get()
-
-        if (!userDoc.exists) {
-            // Criar novo documento para o usuário
-            await userDocRef.set({
-                fcmTokens: [{ fcmToken, deviceId, createdAt: new Date() }]
-            })
-        } else {
-            // Atualizar documento existente
-            const userData = userDoc.data()
-            let tokens = userData?.fcmTokens || []
-
-            // Verificar se já existe um token para este dispositivo
-            const existingTokenIndex = tokens.findIndex((t: any) => t.deviceId === deviceId)
-
-            if (existingTokenIndex >= 0) {
-                // Atualizar token existente
-                tokens[existingTokenIndex] = {
-                    fcmToken,
-                    deviceId,
-                    updatedAt: new Date(),
-                    createdAt: tokens[existingTokenIndex].createdAt
-                }
-            } else {
-                // Adicionar novo token
-                tokens.push({ fcmToken, deviceId, createdAt: new Date() })
-            }
-
-            await userDocRef.update({ fcmTokens: tokens })
-        }
-
-        return res.status(200).json({ success: true })
-
-    } catch (error) {
-        console.error('Erro ao registrar token:', error)
-        return res.status(500).json({ error: 'Erro ao registrar token' })
+    const now = new Date()
+    if (doc.exists) {
+        const idx = tokens.findIndex((t: any) => t.deviceId === deviceId)
+        if (idx >= 0) tokens[idx] = { deviceId, fcmToken, createdAt: tokens[idx].createdAt, updatedAt: now }
+        else tokens.push({ deviceId, fcmToken, createdAt: now })
+        await ref.update({ fcmTokens: tokens })
+    } else {
+        await ref.set({ fcmTokens: [{ deviceId, fcmToken, createdAt: now }] })
     }
+
+    return res.status(200).json({ success: true })
 }
 
-// Deletar token
 async function deleteToken(req: NextApiRequest, res: NextApiResponse) {
-    try {
-        const { fcmToken, email, deviceId } = req.body
+    const { email, deviceId, fcmToken } = req.body
+    if (!email) return res.status(400).json({ error: 'Email é obrigatório' })
 
-        if (!email) {
-            return res.status(400).json({ error: 'Email é obrigatório' })
-        }
+    const ref = firestoreDb.collection('token-usuarios').doc(email)
+    const doc = await ref.get()
+    if (!doc.exists) return res.status(200).json({ success: true })
 
-        const userDocRef = firestoreDb.collection('token-usuarios').doc(email)
-        const userDoc = await userDocRef.get()
+    let tokens = doc.data()?.fcmTokens || []
+    if (deviceId) tokens = tokens.filter((t: any) => t.deviceId !== deviceId)
+    else if (fcmToken) tokens = tokens.filter((t: any) => t.fcmToken !== fcmToken)
+    else return res.status(400).json({ error: 'Token ou deviceId necessário' })
 
-        if (!userDoc.exists) {
-            // Nada a fazer se o documento não existe
-            return res.status(200).json({ success: true })
-        }
-
-        const userData = userDoc.data()
-        let tokens = userData?.fcmTokens || []
-
-        // Filtragem baseada nos parâmetros fornecidos
-        if (deviceId) {
-            // Remove token específico do dispositivo
-            tokens = tokens.filter((t: any) => t.deviceId !== deviceId)
-        } else if (fcmToken) {
-            // Remove token específico
-            tokens = tokens.filter((t: any) => t.token !== fcmToken)
-        } else {
-            // Se nenhum critério específico, mantém os tokens
-            return res.status(400).json({ error: 'Token ou deviceId é necessário para remoção' })
-        }
-
-        // Atualiza o documento com a nova lista de tokens
-        await userDocRef.update({ fcmTokens: tokens })
-
-        return res.status(200).json({ success: true })
-
-    } catch (error) {
-        console.error('Erro ao remover token:', error)
-        return res.status(500).json({ error: 'Erro ao remover token' })
-    }
+    await ref.update({ fcmTokens: tokens })
+    return res.status(200).json({ success: true })
 }
