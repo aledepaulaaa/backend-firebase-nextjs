@@ -120,7 +120,7 @@ async function registerToken(req: NextApiRequest, res: NextApiResponse) {
 // Deletar token
 async function deleteToken(req: NextApiRequest, res: NextApiResponse) {
     try {
-        const { token, email, deviceId } = req.body
+        const { fcmToken, email, deviceId } = req.body
 
         if (!email) {
             return res.status(400).json({ error: 'Email é obrigatório' })
@@ -141,9 +141,9 @@ async function deleteToken(req: NextApiRequest, res: NextApiResponse) {
         if (deviceId) {
             // Remove token específico do dispositivo
             tokens = tokens.filter((t: any) => t.deviceId !== deviceId)
-        } else if (token) {
+        } else if (fcmToken) {
             // Remove token específico
-            tokens = tokens.filter((t: any) => t.token !== token)
+            tokens = tokens.filter((t: any) => t.token !== fcmToken)
         } else {
             // Se nenhum critério específico, mantém os tokens
             return res.status(400).json({ error: 'Token ou deviceId é necessário para remoção' })
