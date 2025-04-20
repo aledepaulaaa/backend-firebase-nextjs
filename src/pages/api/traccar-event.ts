@@ -6,7 +6,7 @@ import { runCorsMiddleware } from '@/lib/cors'
 interface EventNotificationPayload {
     id: number
     attributes?: Record<string, any>
-    deviceId: string
+    deviceId: number
     type: string
     eventTime: string
     positionId?: number
@@ -33,10 +33,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         "Evento: ": event
     })
 
+    function validarEmail(email: string): boolean {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        return emailRegex.test(email)
+    }
+
     // Validações básicas
-    if (!email) {
+    if (!email || !validarEmail(email)) {
         return res.status(400).json({ error: 'Email é obrigatório.' })
     }
+
     if (!event || !event.deviceId || !event.type) {
         return res.status(400).json({ error: 'Dados de evento inválidos.' })
     }
@@ -77,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tokens,
             notification: makeNotification,
             data: {
-                deviceId: event.deviceId,
+                deviceId: event.deviceId as any,
                 eventType: event.type,
                 eventTime: event.eventTime,
                 url: `/device/${event.deviceId}`
