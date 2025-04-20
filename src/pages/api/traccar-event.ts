@@ -6,7 +6,7 @@ import { runCorsMiddleware } from '@/lib/cors'
 interface EventNotificationPayload {
     deviceId: string
     deviceName?: string
-    eventType: string
+    type: string
     eventTime: string
     attributes?: Record<string, any>
 }
@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!email) {
         return res.status(400).json({ error: 'Email é obrigatório.' })
     }
-    if (!event || !event.deviceId || !event.eventType) {
+    if (!event || !event.deviceId || !event.type) {
         return res.status(400).json({ error: 'Dados de evento inválidos.' })
     }
 
@@ -55,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Helper para título e corpo
         const makeNotification = (() => {
             const base = event.deviceName || `Dispositivo ${event.deviceId}`
-            switch (event.eventType) {
+            switch (event.type) {
                 case 'deviceOnline': return { title: 'Dispositivo Online', body: `${base} está online` }
                 case 'deviceOffline': return { title: 'Dispositivo Offline', body: `${base} está offline` }
                 case 'deviceMoving': return { title: 'Movimento Detectado', body: `${base} está se movendo` }
@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 case 'geofenceEnter': return { title: 'Cerca Virtual', body: `${base} entrou em ${event.attributes?.geofenceName || ''}` }
                 case 'geofenceExit': return { title: 'Cerca Virtual', body: `${base} saiu de ${event.attributes?.geofenceName || ''}` }
                 case 'alarm': return { title: 'Alarme', body: `${base}: ${event.attributes?.alarm || 'Alarme ativado'}` }
-                default: return { title: 'Notificação', body: `${base}: ${event.eventType}` }
+                default: return { title: 'Notificação', body: `${base}: ${event.type}` }
             }
         })()
 
@@ -75,7 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             notification: makeNotification,
             data: {
                 deviceId: event.deviceId,
-                eventType: event.eventType,
+                eventType: event.type,
                 eventTime: event.eventTime,
                 url: `/device/${event.deviceId}`
             },
