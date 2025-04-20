@@ -4,11 +4,14 @@ import admin from 'firebase-admin'
 import { runCorsMiddleware } from '@/lib/cors'
 
 interface EventNotificationPayload {
+    id: number
+    attributes?: Record<string, any>
     deviceId: string
-    deviceName?: string
     type: string
     eventTime: string
-    attributes?: Record<string, any>
+    positionId?: number
+    geofenceId?: number
+    maintenanceId?: number
 }
 
 interface TraccarEventRequest {
@@ -54,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // Helper para título e corpo
         const makeNotification = (() => {
-            const base = event.deviceName || `Dispositivo ${event.deviceId}`
+            const base = event.id || `Dispositivo ${event.deviceId}`
             switch (event.type) {
                 case 'deviceOnline': return { title: 'Dispositivo Online', body: `${base} está online` }
                 case 'deviceOffline': return { title: 'Dispositivo Offline', body: `${base} está offline` }
