@@ -52,7 +52,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
         // Obter tokens registrados
         const emailLimpo = limparEmail(email)
-        console.log("Email limpo para consulta no Firestore:", emailLimpo)
         const userDocRef = firestoreDb.collection('token-usuarios').doc(emailLimpo)
         const userDoc = await userDocRef.get()
 
@@ -124,7 +123,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             success: true,
             sent: response.successCount,
             failed: response.failureCount,
-            invalidRemoved: invalid.length
+            invalidRemoved: invalid.length,
+            message: 'Notificações enviadas com sucesso.'
         })
 
     } catch (err: any) {
