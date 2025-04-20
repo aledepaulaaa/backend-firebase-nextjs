@@ -33,13 +33,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         "Evento: ": event
     })
 
-    function validarEmail(email: string): boolean {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        return emailRegex.test(email)
+    // função para limpar o email antes de usa-lo para verificar no Firestore
+    function limparEmail(email: string): string {
+        return email.replace(/[^\w\s]/gi, '').trim().toLowerCase()
     }
 
-        // Validações básicas
-    if (!email || !validarEmail(email)) {
+
+    // Validações básicas
+    if (!email) {
         return res.status(400).json({ error: 'Email é obrigatório.' })
     }
 
@@ -47,10 +48,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Dados de evento inválidos.' })
     }
 
-    // função para limpar o email antes de usa-lo para verificar no Firestore
-    function limparEmail(email: string): string {
-        return email.replace(/[^\w\s]/gi, '').trim().toLowerCase()
-    }
 
     try {
         // Obter tokens registrados
