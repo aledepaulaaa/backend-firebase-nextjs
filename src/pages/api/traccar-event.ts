@@ -61,10 +61,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const tokens: string[] = userDoc.data()?.fcmTokens?.map((t: any) => t.fcmToken) || []
         if (tokens.length === 0) {
-            return res.status(404).json({ error: 'Nenhum token disponível para envio.' })
+            res.status(404).json({ error: 'Nenhum token disponível para envio.' })
+        } else {
+            console.log({
+                "Tokens encontrados para o email": emailLimpo,
+                "Tokens": tokens
+            })
         }
 
-        // Helper para título e corpo
+        console.log("Criando payload da notificação...")
         const makeNotification = (() => {
             const base = event.id || `Dispositivo ${event.deviceId}`
             switch (event.type) {
@@ -80,6 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 default: return { title: 'Notificação', body: `${base}: ${event.type}` }
             }
         })()
+        console.log("Payload da notificação criado: ", makeNotification)
 
         // Payload FCM
         const message: admin.messaging.MulticastMessage = {
@@ -101,9 +107,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         }
 
+        console.log("Mensagem FCM construída:", message)
+
+        console.log("Enviando notificações FCM...")
         // Envio e tratamento de respostas
         const batch = admin.messaging().sendEachForMulticast(message)
         const response = await batch
+        console.log("Resposta do envio FCM:", response)
 
         // Filtrar tokens inválidos
         const invalid: string[] = []
@@ -113,9 +123,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         })
         if (invalid.length) {
+            console.log("Tokens inválidos encontrados:", invalid)
             await userDocRef.update({
                 fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalid.map(token => ({ fcmToken: token })))
             })
+            console.log("Tokens inválidos removidos do Firestore.")
         }
 
         return res.status(200).json({
