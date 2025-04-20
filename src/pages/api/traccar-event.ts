@@ -87,9 +87,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             notification: makeNotification,
             data: {
                 deviceId: event.deviceId as any,
-                eventType: event.type,
+                type: event.type,
                 eventTime: event.eventTime,
-                url: `/device/${event.deviceId}`
             },
             android: {
                 priority: 'high',
