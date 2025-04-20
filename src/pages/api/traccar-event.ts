@@ -61,15 +61,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const tokens: string[] = userDoc.data()?.fcmTokens?.map((t: any) => t.fcmToken) || []
         if (tokens.length === 0) {
-            res.status(404).json({ error: 'Nenhum token disponível para envio.' })
-        } else {
-            console.log({
-                "Tokens encontrados para o email": emailLimpo,
-                "Tokens": tokens
-            })
+            return res.status(404).json({ error: 'Nenhum token disponível para envio.' })
         }
 
-        console.log("Criando payload da notificação...")
         const makeNotification = (() => {
             const base = event.id || `Dispositivo ${event.deviceId}`
             switch (event.type) {
@@ -85,14 +79,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 default: return { title: 'Notificação', body: `${base}: ${event.type}` }
             }
         })()
-        console.log("Payload da notificação criado: ", makeNotification)
+        // console.log("Payload da notificação criado: ", makeNotification)
 
         // Payload FCM
         const message: admin.messaging.MulticastMessage = {
             tokens,
             notification: makeNotification,
             data: {
-                deviceId: event.deviceId as any,
+                deviceId: String(event.deviceId),
                 type: event.type,
                 eventTime: event.eventTime,
             },
@@ -107,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         }
 
-        console.log("Mensagem FCM construída:", message)
+        // console.log("Mensagem FCM construída:", message)
 
         console.log("Enviando notificações FCM...")
         // Envio e tratamento de respostas
