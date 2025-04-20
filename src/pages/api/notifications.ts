@@ -10,7 +10,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         case 'DELETE': return deleteToken(req, res)
         default:
             res.setHeader('Allow', ['GET', 'POST', 'DELETE'])
-            return res.status(405).end(`Method ${req.method} Not Allowed`)
+            return res.status(405).end(`Metódo ${req.method} Não Permitido`)
     }
 }
 
@@ -36,7 +36,6 @@ async function registerToken(req: NextApiRequest, res: NextApiResponse) {
         "FCM Token: ": fcmToken,
         "Email: ": email,
         "Device ID: ": deviceId,
-        "/api/notifications/": "/api/notifications/"
     })
 
     function validarEmail(email: string): boolean {

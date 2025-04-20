@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method !== 'POST') {
         res.setHeader('Allow', ['POST'])
-        return res.status(405).json({ error: `Method ${req.method} Not Allowed` })
+        return res.status(405).json({ error: `Metódo ${req.method} Não Permitido` })
     }
 
     const { email, event } = req.body as TraccarEventRequest
@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // função para limpar o email antes de usa-lo para verificar no Firestore
     function limparEmail(email: string): string {
-        return email.replace(/[^\w\s]/gi, '').trim().toLowerCase()
+        return email?.replace(/"/g, '').trim().toLowerCase() || ''
     }
 
 
