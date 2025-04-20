@@ -16,6 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function checkUserToken(req: NextApiRequest, res: NextApiResponse) {
     const { email, deviceId } = req.query
+    
     if (!email) return res.status(400).json({ error: 'Email é obrigatório' })
     const ref = firestoreDb.collection('token-usuarios').doc(email as string)
     const doc = await ref.get()
@@ -30,9 +31,29 @@ async function checkUserToken(req: NextApiRequest, res: NextApiResponse) {
 
 async function registerToken(req: NextApiRequest, res: NextApiResponse) {
     const { fcmToken, email, deviceId = 'default' } = req.body
-    if (!fcmToken || !email) return res.status(400).json({ error: 'Token e email são obrigatórios' })
 
-    const ref = firestoreDb.collection('token-usuarios').doc(email)
+    console.log({
+        "FCM Token: ": fcmToken,
+        "Email: ": email,
+        "Device ID: ": deviceId,
+        "/api/notifications/": "/api/notifications/"
+    })
+
+    function validarEmail(email: string): boolean {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        return emailRegex.test(email)
+    }
+
+    if (!fcmToken || !email || !validarEmail(email)) return res.status(400).json({ error: 'Token e email são obrigatórios' })
+
+
+    function limparEmail(email: string): string {
+        // Remove aspas e espaços em branco
+        return email.replace(/["']/g, '').trim().toLowerCase()
+    }
+
+    const emailLimpo = limparEmail(email)
+    const ref = firestoreDb.collection('token-usuarios').doc(emailLimpo)
     const doc = await ref.get()
     let tokens = doc.exists ? doc.data()?.fcmTokens || [] : []
 

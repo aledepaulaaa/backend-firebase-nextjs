@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return emailRegex.test(email)
     }
 
-    // Validações básicas
+        // Validações básicas
     if (!email || !validarEmail(email)) {
         return res.status(400).json({ error: 'Email é obrigatório.' })
     }
@@ -47,9 +47,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Dados de evento inválidos.' })
     }
 
+    // função para limpar o email antes de usa-lo para verificar no Firestore
+    function limparEmail(email: string): string {
+        return email.replace(/[^\w\s]/gi, '').trim().toLowerCase()
+    }
+
     try {
         // Obter tokens registrados
-        const userDocRef = firestoreDb.collection('token-usuarios').doc(email)
+        const emailLimpo = limparEmail(email)
+        const userDocRef = firestoreDb.collection('token-usuarios').doc(emailLimpo)
         const userDoc = await userDocRef.get()
 
         if (!userDoc.exists) {
