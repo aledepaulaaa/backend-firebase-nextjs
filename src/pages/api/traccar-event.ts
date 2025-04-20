@@ -25,6 +25,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const { email, event } = req.body as TraccarEventRequest
+    console.log({
+        "Email: ": email,
+        "Evento: ": event
+    })
 
     // Validações básicas
     if (!email) {
