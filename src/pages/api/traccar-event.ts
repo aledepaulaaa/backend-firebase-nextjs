@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         const makeNotification = (() => {
-            const base = event.id || `Dispositivo ${event.deviceId}`
+            const base = event.name || `Dispositivo ${event.deviceId}`
             switch (event.type) {
                 case 'deviceOnline': return { title: 'Dispositivo Online', body: `${base} está online` }
                 case 'deviceOffline': return { title: 'Dispositivo Offline', body: `${base} está offline` }
