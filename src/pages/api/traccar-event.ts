@@ -87,7 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tokens,
             notification: makeNotification,
             data: {
-                name: event.name,
+                name: String(event.name),
                 type: event.type,
                 eventTime: event.eventTime,
             },
@@ -102,7 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         }
 
-        // console.log("Mensagem FCM construída:", message)
+        console.log("Mensagem FCM construída:", message)
 
         console.log("Enviando notificações FCM...")
         // Envio e tratamento de respostas
