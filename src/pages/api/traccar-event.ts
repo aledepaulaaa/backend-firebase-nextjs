@@ -7,6 +7,7 @@ interface EventNotificationPayload {
     id: number
     attributes?: Record<string, any>
     deviceId: number
+    name: string
     type: string
     eventTime: string
     positionId?: number
@@ -86,7 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tokens,
             notification: makeNotification,
             data: {
-                deviceId: String(event.deviceId),
+                name: event.name,
                 type: event.type,
                 eventTime: event.eventTime,
             },
