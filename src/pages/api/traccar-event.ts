@@ -100,6 +100,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
         // 1. Obter o email do usuário fazendo uma chamada à API do Traccar
         const userEmail = await getUserEmailFromTraccar(event.deviceId);
+        console.log("Email do usuário:", userEmail);
 
         if (!userEmail) {
             // Se não encontrarmos um email, não há como prosseguir.
