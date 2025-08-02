@@ -32,11 +32,7 @@ async function checkUserToken(req: NextApiRequest, res: NextApiResponse) {
 async function registerToken(req: NextApiRequest, res: NextApiResponse) {
     const { fcmToken, email, deviceId = 'default' } = req.body
 
-    console.log({
-        "FCM Token: ": fcmToken,
-        "Email: ": email,
-        "Device ID: ": deviceId,
-    })
+    console.log("api/notifications - Corpo do request: ", req.body)
 
     function validarEmail(email: string): boolean {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

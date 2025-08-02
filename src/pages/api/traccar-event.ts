@@ -29,10 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const { email, event } = req.body as TraccarEventRequest
-    console.log({
-        "Email: ": email,
-        "Evento: ": event
-    })
+    console.log("api/traccar-event - Corpo do request: ", req.body)
 
     // função para limpar o email antes de usa-lo para verificar no Firestore
     function limparEmail(email: string): string {
