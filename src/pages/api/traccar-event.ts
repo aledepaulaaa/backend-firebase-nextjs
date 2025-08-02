@@ -5,142 +5,89 @@ import { firestoreDb } from '@/lib/firebaseAdmin';
 import admin from 'firebase-admin';
 import { runCorsMiddleware } from '@/lib/cors';
 
-// --- Interfaces para a estrutura completa do corpo recebido do Traccar ---
-interface TraccarDevice {
-    id: number;
-    name: string;
-    // Adicione outros campos do dispositivo se precisar deles
-}
-
-interface TraccarEvent {
+// Interfaces (sem alteração)
+interface EventNotificationPayload {
     id: number;
     attributes?: Record<string, any>;
     deviceId: number;
+    name: string;
     type: string;
     eventTime: string;
-    // Adicione outros campos do evento se precisar deles
-}
-
-interface TraccarPayload {
-    event: TraccarEvent;
-    device: TraccarDevice;
-    // O Traccar também pode enviar 'position', adicione se for útil
+    positionId?: number;
+    geofenceId?: number;
+    maintenanceId?: number;
 }
 
 interface TokenData {
     deviceId: string;
     fcmToken: string;
-    createdAt?: admin.firestore.Timestamp | Date;
-    updatedAt?: admin.firestore.Timestamp | Date;
+    createdAt: admin.firestore.Timestamp | Date;
+    updatedAt: admin.firestore.Timestamp | Date;
 }
-
-/**
- * Função auxiliar para buscar o email do usuário no Traccar usando o deviceId.
- * Esta é a nova lógica central para encontrar o destinatário da notificação.
- */
-async function getUserEmailFromTraccar(deviceId: number): Promise<string | null> {
-    // Lê as credenciais da API do Traccar a partir das variáveis de ambiente
-    const traccarUrl = process.env.TRACCAR_API_URL;
-    const traccarEmail = process.env.TRACCAR_API_EMAIL;
-    const traccarPassword = process.env.TRACCAR_API_PASSWORD;
-
-    if (!traccarUrl || !traccarEmail || !traccarPassword) {
-        console.error("ERRO: Variáveis de ambiente TRACCAR_API_URL, TRACCAR_API_EMAIL, ou TRACCAR_API_PASSWORD não estão configuradas na Vercel.");
-        return null;
-    }
-
-    try {
-        // A API do Traccar usa autenticação Basic. Codificamos as credenciais.
-        const authHeader = 'Basic ' + Buffer.from(`${traccarEmail}:${traccarPassword}`).toString('base64');
-        
-        // Faz a chamada para o endpoint /api/users do Traccar, filtrando pelo deviceId
-        const response = await fetch(`${traccarUrl}/api/users?deviceId=${deviceId}`, {
-            headers: {
-                'Authorization': authHeader,
-                'Accept': 'application/json',
-            },
-        });
-
-        if (!response.ok) {
-            console.error(`Erro ao buscar usuário no Traccar para deviceId ${deviceId}. Status: ${response.status}`);
-            return null;
-        }
-
-        const users = await response.json();
-        
-        // A resposta é um array de usuários. O primeiro é geralmente o dono direto.
-        if (users && users.length > 0 && users[0].email) {
-            console.log(`Email encontrado para o deviceId ${deviceId}: ${users[0].email}`);
-            return users[0].email;
-        } else {
-            console.warn(`Nenhum usuário com email encontrado para o deviceId ${deviceId}.`);
-            return null;
-        }
-    } catch (error) {
-        console.error("Erro de rede ao contatar a API do Traccar:", error);
-        return null;
-    }
-}
-
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     await runCorsMiddleware(req, res);
 
     if (req.method !== 'POST') {
+        res.setHeader('Allow', ['POST']);
         return res.status(405).json({ error: `Método ${req.method} Não Permitido` });
     }
 
-    // O payload completo (evento, dispositivo, etc.) é o corpo da requisição
-    const payload = req.body as TraccarPayload;
-    const { event, device } = payload;
+    // --- MUDANÇA PRINCIPAL AQUI ---
+    // 1. O email agora vem da query string da URL.
+    const { email } = req.query;
+    // 2. O evento é o corpo inteiro da requisição.
+    const event = req.body as EventNotificationPayload;
 
-    // Validação básica para garantir que recebemos os dados essenciais do Traccar
-    if (!event || !device || !event.deviceId) {
-        return res.status(400).json({ error: 'Corpo da requisição inválido. Dados do evento ou dispositivo ausentes.' });
+    // Função para limpar o email (sem alteração)
+    function limparEmail(email: string): string {
+        return email?.replace(/"/g, '').trim().toLowerCase() || '';
     }
 
+    // Validações de entrada ajustadas
+    if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: 'Parâmetro de busca "email" é obrigatório.' });
+    }
+    if (!event || !event.deviceId || !event.type) {
+        return res.status(400).json({ error: 'Corpo da requisição com dados de evento inválido.' });
+    }
+
+    // O bloco try/catch agora será executado
     try {
-        // 1. Obter o email do usuário fazendo uma chamada à API do Traccar
-        const userEmail = await getUserEmailFromTraccar(event.deviceId);
+        console.log(`Evento recebido para o email: ${email}`);
+        console.log(`Dados do evento:`, event);
 
-        if (!userEmail) {
-            // Se não encontrarmos um email, não há como prosseguir.
-            // Retornamos 200 OK para que o Traccar não tente reenviar este evento.
-            console.log(`Processo encerrado para deviceId ${event.deviceId} pois não foi encontrado um usuário com email associado.`);
-            return res.status(200).json({ success: true, message: "Evento recebido, mas nenhum usuário com email associado ao dispositivo." });
-        }
-
-        const emailLimpo = userEmail.trim().toLowerCase();
-        console.log(`Processando evento '${event.type}' para o usuário: ${emailLimpo}`);
-
-        // 2. Com o email em mãos, buscamos os tokens no Firestore
+        const emailLimpo = limparEmail(email);
         const userDocRef = firestoreDb.collection('token-usuarios').doc(emailLimpo);
         const userDoc = await userDocRef.get();
 
         if (!userDoc.exists) {
-            return res.status(404).json({ error: `Nenhum registro de token encontrado no Firestore para ${emailLimpo}.` });
+            console.log(`Nenhum registro de token encontrado para ${emailLimpo}.`);
+            return res.status(404).json({ error: `Nenhum registro de token para ${emailLimpo}.` });
         }
 
         const allTokenObjects: TokenData[] = userDoc.data()?.fcmTokens || [];
         if (allTokenObjects.length === 0) {
-            return res.status(404).json({ error: 'Nenhum token FCM disponível para envio.' });
+            console.log(`Nenhum token FCM disponível para ${emailLimpo}.`);
+            return res.status(404).json({ error: 'Nenhum token disponível para envio.' });
         }
 
         const tokensToSend = allTokenObjects.map((t) => t.fcmToken);
-        
-        // Lógica para criar a mensagem da notificação
+        console.log(`Enviando para ${tokensToSend.length} token(s).`);
+
+        // Lógica para criar a notificação (sem alteração)
         const makeNotification = (() => {
-            const base = device.name || `Dispositivo ${event.deviceId}`;
+            const base = event.name || `Dispositivo ${event.deviceId}`;
             switch (event.type) {
-                case 'deviceOnline': return { title: 'Dispositivo Online', body: `${base} está online.` };
-                case 'deviceOffline': return { title: 'Dispositivo Offline', body: `${base} está offline.` };
-                case 'deviceMoving': return { title: 'Movimento Detectado', body: `${base} começou a se mover.` };
-                case 'deviceStopped': return { title: 'Dispositivo Parado', body: `${base} parou.` };
-                case 'ignitionOn': return { title: 'Ignição Ligada', body: `A ignição do ${base} foi ligada.` };
-                case 'ignitionOff': return { title: 'Ignição Desligada', body: `A ignição do ${base} foi desligada.` };
-                case 'geofenceEnter': return { title: 'Entrada em Cerca Virtual', body: `${base} entrou em ${event.attributes?.geofenceName || 'uma cerca'}.` };
-                case 'geofenceExit': return { title: 'Saída de Cerca Virtual', body: `${base} saiu de ${event.attributes?.geofenceName || 'uma cerca'}.` };
-                case 'alarm': return { title: `Alarme Disparado: ${event.attributes?.alarm || 'SOS'}`, body: `Alarme disparado no dispositivo ${base}.` };
+                case 'deviceOnline': return { title: 'Dispositivo Online', body: `${base} está online` };
+                case 'deviceOffline': return { title: 'Dispositivo Offline', body: `${base} está offline` };
+                case 'deviceMoving': return { title: 'Movimento Detectado', body: `${base} está se movendo` };
+                case 'deviceStopped': return { title: 'Dispositivo Parado', body: `${base} está parado` };
+                case 'ignitionOn': return { title: 'Ignição Ligada', body: `${base}: ignição ligada` };
+                case 'ignitionOff': return { title: 'Ignição Desligada', body: `${base}: ignição desligada` };
+                case 'geofenceEnter': return { title: 'Cerca Virtual', body: `${base} entrou em ${event.attributes?.geofenceName || 'uma cerca'}` };
+                case 'geofenceExit': return { title: 'Cerca Virtual', body: `${base} saiu de ${event.attributes?.geofenceName || 'uma cerca'}` };
+                case 'alarm': return { title: 'Alarme', body: `${base}: ${event.attributes?.alarm || 'Alarme ativado'}` };
                 default: return { title: 'Notificação do Traccar', body: `${base}: ${event.type}` };
             }
         })();
@@ -148,19 +95,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const message: admin.messaging.MulticastMessage = {
             tokens: tokensToSend,
             notification: makeNotification,
-            data: { deviceId: String(device.id), eventType: event.type },
+            data: { name: String(event.name), type: event.type, eventTime: event.eventTime },
             android: { priority: 'high', notification: { channelId: 'high_importance_channel' } },
             apns: { payload: { aps: { sound: 'default', badge: 1 } }, headers: { 'apns-priority': '10' } },
             webpush: {
-                fcmOptions: { link: `/device/${device.id}` },
+                fcmOptions: { link: `/device/${event.deviceId}` },
                 notification: { icon: '/icon-192x192.png', badge: '/icon-64x64.png', vibrate: [200, 100, 200] }
             }
         };
 
         const response = await admin.messaging().sendEachForMulticast(message);
-        console.log(`Envio concluído para ${emailLimpo}. Sucesso: ${response.successCount}, Falhas: ${response.failureCount}`);
+        console.log(`Sucesso: ${response.successCount}, Falhas: ${response.failureCount}`);
 
-        // Lógica de remoção de tokens inválidos (sem alteração)
+        // Lógica de remoção de tokens inválidos (sem alteração, continua correta)
         if (response.failureCount > 0) {
             const invalidTokens = new Set<string>();
             response.responses.forEach((resp, idx) => {
@@ -168,19 +115,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     const errorCode = resp.error?.code;
                     if (errorCode === 'messaging/invalid-registration-token' || errorCode === 'messaging/registration-token-not-registered') {
                         const failedToken = tokensToSend[idx];
+                        console.log(`Token inválido detectado para remoção: ${failedToken}`);
                         invalidTokens.add(failedToken);
                     }
                 }
             });
 
             if (invalidTokens.size > 0) {
-                console.log(`Removendo ${invalidTokens.size} tokens inválidos do Firestore...`);
                 const validTokenObjects = allTokenObjects.filter((t) => !invalidTokens.has(t.fcmToken));
                 await userDocRef.update({ fcmTokens: validTokenObjects });
+                console.log(`${invalidTokens.size} tokens inválidos removidos do Firestore.`);
             }
         }
 
-        return res.status(200).json({ success: true, message: 'Notificações processadas.' });
+        return res.status(200).json({
+            success: true,
+            sent: response.successCount,
+            failed: response.failureCount,
+            message: 'Notificações processadas.'
+        });
 
     } catch (err: any) {
         console.error('[traccar-event] Erro fatal no bloco try/catch:', err);
