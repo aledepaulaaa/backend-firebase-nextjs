@@ -42,6 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
         const deviceId = event.deviceId
+        console.log("ID DO DISPOSITIVO: ", deviceId)
 
         // --- NOVA LÓGICA INTELIGENTE ---
         // 1. Procurar na coleção 'token-usuarios' por um documento que contenha o deviceId do evento.
